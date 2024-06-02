@@ -1,5 +1,5 @@
 import pytest
-from pyasynctracker.scraper import scrape_info_hashes, batch_scrape_info_hashes
+from pyasynctracker import scrape_info_hashes, batch_scrape_info_hashes
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-from pyasynctracker.utils import find_max_seeders
+from pyasynctracker import find_max_seeders
 
 
 def test_find_max_seeders():
