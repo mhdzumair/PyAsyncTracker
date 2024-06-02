@@ -199,62 +199,59 @@ def udp_create_connection_request():
 
 
 def udp_create_scrape_request(connection_id, info_hashes):
-    max_hashes_per_request = (
-        74  # This number might need to be adjusted based on other packet content.
-    )
-    if len(info_hashes) > max_hashes_per_request:
-        raise ValueError(
-            f"Too many info hashes for a single UDP packet: {len(info_hashes)} provided, maximum is {max_hashes_per_request}. Consider splitting the request."
-        )
-
-    action = 2  # action (2 = scrape)
+    base_size = 16  # Basic overhead for connection ID, action, and transaction ID in bytes
+    max_packet_size = 508  # Maximum safe UDP packet size in bytes
+    action = 2  # Action code for 'scrape'
     transaction_id = random.randint(0, 0xFFFFFFFF)
-    buf = struct.pack("!qII", connection_id, action, transaction_id)
-    for info_hash in info_hashes:
-        buf += binascii.a2b_hex(info_hash)
-        if len(buf) > 508:  # Keeping the packet size within a safe limit
-            raise ValueError("Packet size exceeds the safe UDP packet size limit.")
 
-    return buf, transaction_id
+    # Start assembling the packet
+    packet = struct.pack("!qII", connection_id, action, transaction_id)
+    included_hashes = []
+
+    for info_hash in info_hashes:
+        hash_bytes = binascii.a2b_hex(info_hash)
+        # Check if adding this hash would exceed the max packet size considering base_size
+        if len(packet) + len(hash_bytes) + base_size > max_packet_size:
+            break  # Stop adding hashes if the packet would become too large
+        packet += hash_bytes
+        included_hashes.append(info_hash)
+
+    if not included_hashes:
+        raise ValueError("No hashes could be included in the packet without exceeding the size limit.")
+
+    return packet, included_hashes, transaction_id
 
 
 async def scrape_udp(parsed_tracker: parse.ParseResult, info_hashes: list[str], timeout: int):
     con_req, con_trans_id = udp_create_connection_request()
     results = {}
-    max_hashes_per_request = 74
+    remaining_hashes = list(info_hashes)  # Start with all hashes
 
     async def on_con_response(data):
         connection_id = struct.unpack_from("!q", data, 8)[0]
-        # Split info_hashes into manageable chunks if necessary
-        for i in range(0, len(info_hashes), max_hashes_per_request):
-            current_hashes = info_hashes[i: i + max_hashes_per_request]
+        nonlocal remaining_hashes  # Reference the non-local variable defined in outer scope
+
+        while remaining_hashes:
             try:
-                scrape_req, scrape_trans_id = udp_create_scrape_request(
-                    connection_id, current_hashes
-                )
-                await send_udp_request(
-                    parsed_tracker, scrape_req, on_scrape_response, on_error, timeout
-                )
+                scrape_req, included_hashes, trans_id = udp_create_scrape_request(connection_id, remaining_hashes)
+                remaining_hashes = [h for h in remaining_hashes if h not in included_hashes]  # Update remaining_hashes safely
+                await send_udp_request(parsed_tracker, scrape_req, lambda response: on_scrape_response(response, included_hashes), on_error, timeout)
             except ValueError as e:
                 logging.error(f"Error creating UDP scrape request: {e}")
+                break
 
-    async def on_scrape_response(data):
-        offset = 8  # skip action and transaction id
+    async def on_scrape_response(data, included_hashes):
+        offset = 8  # Skip action and transaction ID
         expected_length_per_hash = 12  # 4 bytes each for seeds, completed, leeches
         local_results = {}
 
-        # Ensure each hash has enough data in the buffer to unpack
-        for info_hash in info_hashes:
+        for info_hash in included_hashes:
             if offset + expected_length_per_hash > len(data):
-                logging.error(
-                    f"Not enough data to unpack results for hash: {info_hash}. Data length: {len(data)}, required: {offset + expected_length_per_hash}"
-                )
-                break
+                logging.error(f"Not enough data to unpack results for hash: {info_hash}. Data length: {len(data)}, required: {offset + expected_length_per_hash}")
+                continue  # Use continue to process next hashes if possible
 
             seeds, completed, leeches = struct.unpack_from("!iii", data, offset)
-            readable_hash = binascii.b2a_hex(binascii.a2b_hex(info_hash)).decode(
-                "utf-8"
-            )
+            readable_hash = binascii.b2a_hex(binascii.a2b_hex(info_hash)).decode("utf-8")
             local_results[readable_hash] = {
                 "tracker_url": parsed_tracker.geturl(),
                 "seeders": seeds,
