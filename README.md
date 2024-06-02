@@ -24,7 +24,7 @@ pip install pyasynctracker
 Scrape torrent data asynchronously from multiple trackers for given info hashes.
 
 ```python
-from pyasynctracker.scraper import scrape_info_hashes
+from pyasynctracker import scrape_info_hashes
 
 async def main():
     info_hashes = ["2b66980093bc11806fab50cb3cb41835b95a0362", "706440a3f8fdac91591d6007c4314f3274317f85"]
@@ -59,7 +59,7 @@ if __name__ == "__main__":
 Batch scrape info hashes based on a structured input of info hashes and their respective trackers. This function groups info hashes by their associated trackers and performs scraping in batches.
 
 ```python
-from pyasynctracker.scraper import batch_scrape_info_hashes
+from pyasynctracker import batch_scrape_info_hashes
 
 async def main():
     data_list = [
@@ -80,11 +80,13 @@ if __name__ == "__main__":
 Analyze the results from scraping functions to find the maximum number of seeders for each info hash.
 
 ```python
-from pyasynctracker.utils import find_max_seeders
+from pyasynctracker import find_max_seeders
 
 # Assuming 'results' is populated from the scrape_info_hashes or batch_scrape_info_hashes functions
 max_seeders = find_max_seeders(results)
 print(max_seeders)
+
+# {'2b66980093bc11806fab50cb3cb41835b95a0362': 1022, '706440a3f8fdac91591d6007c4314f3274317f85': 168}
 ```
 
 ## Contributing
