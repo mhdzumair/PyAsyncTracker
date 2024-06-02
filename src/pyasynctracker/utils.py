@@ -18,6 +18,6 @@ def find_max_seeders(
         max_seeder_count = max(
             (result.get("seeders", 0) for result in results), default=0
         )
-        max_seeders[info_hash] = max_seeder_count
+        max_seeders[info_hash] = max_seeder_count if max_seeder_count > 0 else 0
 
     return max_seeders
