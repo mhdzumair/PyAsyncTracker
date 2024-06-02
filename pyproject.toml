@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "PyAsyncTracker"
+version = "0.1.0"
+description = "Asynchronous scraping library for torrent trackers."
+authors = ["Mohamed Zumair <mhdzumair@gmail.com>"]
+license = "MIT License"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+aiohttp = "^3.9.5"
+aiodns = "^3.2.0"
+bencodepy = "^0.9.5"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+pytest-asyncio = "^0.23.6"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests"
+]
+pythonpath = [
+    "src"
+]
+addopts = "--import-mode=importlib"
