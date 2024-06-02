@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "PyAsyncTracker"
-version = "0.1.0"
+version = "0.2.0"
 description = "Asynchronous scraping library for torrent trackers."
 authors = ["Mohamed Zumair <mhdzumair@gmail.com>"]
 license = "MIT License"
