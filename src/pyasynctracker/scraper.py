@@ -191,7 +191,10 @@ async def send_udp_request(parsed_tracker, message, response_handler, error_hand
         if transport.is_closing():
             transport.abort()
         else:
-            transport.close()
+            try:
+                transport.close()
+            except RuntimeError:
+                pass
 
 
 def udp_create_connection_request():
