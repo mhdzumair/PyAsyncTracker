@@ -184,16 +184,21 @@ async def send_udp_request(parsed_tracker, message, response_handler, error_hand
         remote_addr=(ip, parsed_tracker.port),
     )
     try:
-        await asyncio.sleep(timeout)  # Timeout for response
+        await asyncio.wait_for(asyncio.sleep(timeout), timeout=timeout)  # Timeout for response
+    except asyncio.TimeoutError:
+        error_handler(f"Timeout while waiting for response from {parsed_tracker.geturl()}")
     finally:
-        transport.close()
+        if transport.is_closing():
+            transport.abort()
+        else:
+            transport.close()
 
 
 def udp_create_connection_request():
     connection_id = 0x41727101980  # default connection id
     action = 0  # action (0 = give me a new connection id)
     transaction_id = random.randint(0, 0xFFFFFFFF)
-    # Use 'II' for unsigned ints instead of 'ii' to handle the full range of possible transaction_ids
+    # Use 'II' for unsigned ints to handle the full range of possible transaction_ids
     buf = struct.pack("!qII", connection_id, action, transaction_id)
     return buf, transaction_id
 
@@ -228,26 +233,35 @@ async def scrape_udp(parsed_tracker: parse.ParseResult, info_hashes: list[str], 
     remaining_hashes = list(info_hashes)  # Start with all hashes
 
     async def on_con_response(data):
-        connection_id = struct.unpack_from("!q", data, 8)[0]
+        action, trans_id, connection_id = struct.unpack_from("!IIq", data)
+        if action != 0 or trans_id != con_trans_id:
+            logging.error(f"Invalid connection response from {parsed_tracker.geturl()}")
+            return
+
         nonlocal remaining_hashes  # Reference the non-local variable defined in outer scope
 
         while remaining_hashes:
             try:
                 scrape_req, included_hashes, trans_id = udp_create_scrape_request(connection_id, remaining_hashes)
                 remaining_hashes = [h for h in remaining_hashes if h not in included_hashes]  # Update remaining_hashes safely
-                await send_udp_request(parsed_tracker, scrape_req, lambda response: on_scrape_response(response, included_hashes), on_error, timeout)
+                await send_udp_request(parsed_tracker, scrape_req, lambda response: on_scrape_response(response, included_hashes, trans_id), on_error, timeout)
             except ValueError as e:
                 logging.error(f"Error creating UDP scrape request: {e}")
                 break
 
-    async def on_scrape_response(data, included_hashes):
+    async def on_scrape_response(data, included_hashes, trans_id):
+        action, resp_trans_id = struct.unpack_from("!II", data)
+        if action != 2 or resp_trans_id != trans_id:
+            logging.error(f"Invalid scrape response from {parsed_tracker.geturl()}")
+            return
+
         offset = 8  # Skip action and transaction ID
         expected_length_per_hash = 12  # 4 bytes each for seeds, completed, leeches
         local_results = {}
 
         for info_hash in included_hashes:
             if offset + expected_length_per_hash > len(data):
-                logging.error(f"Not enough data to unpack results for hash: {info_hash}. Data length: {len(data)}, required: {offset + expected_length_per_hash}")
+                logging.error(f"Not enough data to unpack results for hash: {info_hash}. Data: {data} Data length: {len(data)}, required: {offset + expected_length_per_hash}")
                 continue  # Use continue to process next hashes if possible
 
             seeds, completed, leeches = struct.unpack_from("!iii", data, offset)
